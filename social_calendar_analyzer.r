@@ -3,16 +3,14 @@
 # install.packages("dplyr")      # For data manipulation
 # install.packages("stringr")    # For string manipulation
 # install.packages("tidyr")      # For handling list columns
-
 # Optional
 # install.packages("microbenchmark") # For handling benchmarks
-
 # Load libraries
 library(lubridate)
 library(dplyr)
 library(stringr)
 library(tidyr)
-library(microbenchmark)
+#library(microbenchmark)
 
 # Function to analyze time spent with friends
 analyze_icalendar <- function(file_path) {
@@ -20,8 +18,8 @@ analyze_icalendar <- function(file_path) {
   ics_data <- readLines(file_path, encoding = "UTF-8")
   
   # Extract DTSTART, DTEND, and SUMMARY fields
-  start_times <- str_extract(ics_data[str_detect(ics_data, "^DTSTART")], "\\d{8}T\\d{6}")
-  end_times <- str_extract(ics_data[str_detect(ics_data, "^DTEND")], "\\d{8}T\\d{6}")
+  start_times <- str_extract(ics_data[str_detect(ics_data, "^DTSTART")], "\\d{8}T\\d{6}Z")
+  end_times <- str_extract(ics_data[str_detect(ics_data, "^DTEND")], "\\d{8}T\\d{6}Z")
   summaries <- str_remove(ics_data[str_detect(ics_data, "^SUMMARY")], "^SUMMARY:")
   
   # Ensure lengths match
@@ -44,16 +42,15 @@ analyze_icalendar <- function(file_path) {
   
   # Extract names from the Summary field
   calendar_df <- calendar_df %>%
-    mutate(Friends = strsplit(Summary, "\\s+")) %>%  # Split on spaces
+    mutate(Friends = str_extract_all(Summary, "\\b\\w+\\b")) %>%  # Extract all words as names
     unnest(Friends) %>%
-    filter(Friends != "mitm", Friends != "und", Friends != "bim") %>%  # Remove common words
     group_by(Friends) %>%
     summarise(Total_Time_Minutes = sum(Duration, na.rm = TRUE)) %>%
     arrange(desc(Total_Time_Minutes))
   
   # Display results
   print(calendar_df)
-  
+
   # Save results to CSV
   write.csv(calendar_df, "social_calendar_analysis_r.csv", row.names = FALSE)
   cat("Analysis complete! Results saved as 'social_calendar_analysis_r.csv'.\n")
