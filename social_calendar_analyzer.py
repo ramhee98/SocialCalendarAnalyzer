@@ -1,68 +1,61 @@
+
 import pandas as pd
 import re
 from datetime import datetime
 import timeit
 
-def extract_field(line, pattern):
-    """Extracts the first match of a pattern in a line, safely handling missing matches."""
-    match = re.search(pattern, line)
-    return match.group() if match else None
-
-def analyze_icalendar(file_path):
-    # Read the .ics file
+# Function to extract events from .ics file
+def parse_icalendar(file_path):
     with open(file_path, "r", encoding="utf-8") as file:
-        ics_data = file.readlines()
+        lines = file.readlines()
+
+    events = []
+    event = {}
     
-    # Extract DTSTART, DTEND, and SUMMARY fields safely
-    start_times = [extract_field(line, r"\d{8}T\d{6}") for line in ics_data if line.startswith("DTSTART")]
-    end_times = [extract_field(line, r"\d{8}T\d{6}") for line in ics_data if line.startswith("DTEND")]
-    summaries = [line.replace("SUMMARY:", "").strip() for line in ics_data if line.startswith("SUMMARY")]
+    for line in lines:
+        line = line.strip()
+        
+        if line.startswith("DTSTART"):
+            dt_start = re.search(r"\d{8}T\d{6}Z", line)
+            if dt_start:
+                event["Start"] = datetime.strptime(dt_start.group(), "%Y%m%dT%H%M%SZ")
 
-    # Remove None values that indicate parsing issues
-    start_times = [s for s in start_times if s]
-    end_times = [e for e in end_times if e]
+        if line.startswith("DTEND"):
+            dt_end = re.search(r"\d{8}T\d{6}Z", line)
+            if dt_end:
+                event["End"] = datetime.strptime(dt_end.group(), "%Y%m%dT%H%M%SZ")
 
-    # Ensure lengths match
-    min_length = min(len(start_times), len(end_times), len(summaries))
-    start_times, end_times, summaries = start_times[:min_length], end_times[:min_length], summaries[:min_length]
+        if line.startswith("SUMMARY"):
+            event["Summary"] = line.split(":", 1)[1].strip()
+        
+        if line == "END:VEVENT":
+            if "Start" in event and "End" in event and "Summary" in event:
+                event["Total_Time_Minutes"] = (event["End"] - event["Start"]).total_seconds() / 60  # Duration in minutes
+                events.append(event)
+            event = {}
 
-    # Convert times to datetime objects
-    start_times = [datetime.strptime(time, "%Y%m%dT%H%M%S") for time in start_times]
-    end_times = [datetime.strptime(time, "%Y%m%dT%H%M%S") for time in end_times]
+    return pd.DataFrame(events)
 
-    # Create DataFrame
-    calendar_df = pd.DataFrame({
-        "Start": start_times,
-        "End": end_times,
-        "Summary": summaries
-    })
+# Function to analyze calendar events and compute time spent with each person
+def analyze_calendar(file_path, output_path):
+    calendar_df = parse_icalendar(file_path)
 
-    # Compute event durations in minutes
-    calendar_df["Duration"] = (calendar_df["End"] - calendar_df["Start"]).dt.total_seconds() / 60
+    # Extract names from the Summary field (assuming names are single words or comma-separated)
+    calendar_df["Friends"] = calendar_df["Summary"].apply(lambda x: re.findall(r'\b\w+\b', x))
 
-    # Extract names from the Summary field
-    def extract_names(summary):
-        words = summary.split()
-        return [word for word in words if word.lower() not in {"mitm", "und", "bim"}]
+    # Normalize names by flattening and grouping total time spent with each person
+    friends_time = (
+        calendar_df.explode("Friends")  # Expand multiple names in the same event
+        .groupby("Friends", as_index=False)["Total_Time_Minutes"].sum()
+        .sort_values(by="Total_Time_Minutes", ascending=False)
+    )
 
-    # Expand names into separate rows
-    exploded_df = calendar_df.explode("Summary")
-    exploded_df["Friends"] = exploded_df["Summary"].apply(extract_names)
-    exploded_df = exploded_df.explode("Friends")
-
-    # Aggregate total time per friend
-    friend_time_df = exploded_df.groupby("Friends", as_index=False)["Duration"].sum()
-    friend_time_df = friend_time_df.sort_values(by="Duration", ascending=False)
-
-    # Save results to CSV
-    friend_time_df.to_csv("social_calendar_analysis_python.csv", index=False)
-    print("Analysis complete! Results saved as 'social_calendar_analysis_python.csv'.")
-    
-    # Display results
-    print(friend_time_df)
+    # Save the results to a CSV file
+    friends_time.to_csv(output_path, index=False)
+    print(f"Analysis complete! Results saved as '{output_path}'.")
 
 # Example usage
-analyze_icalendar("calendar.ics")
+analyze_calendar("calendar.ics", "social_calendar_analysis_python.csv")
 
 # Run benchmark 100 times
 #def benchmark():
