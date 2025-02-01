@@ -1,0 +1,18 @@
+# Ignore virtual environment folder
+venv/
+
+# Ignore ics files
+*.ics
+
+# Ignore csv files
+*.csv
+
+# Ignore other common Python-related files and folders
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.env
+.env
+.DS_Store
+*.log
